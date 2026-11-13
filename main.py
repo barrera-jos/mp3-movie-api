@@ -3,11 +3,9 @@ import logging
 from pathlib import Path
 import json
 
-
 import pandas as pd
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 
-from src import MOVIE_COLUMNS, MovieStorage
 from data_pipeline import create_cleaning_report, process_data, validate_dataframe
 from src import (
     HealthResponse,
@@ -20,6 +18,8 @@ from src import (
     ProcessConfig,
 )
 
+from src.middleware import log_requests
+
 logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
@@ -27,12 +27,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Movie Database API")
+app = FastAPI(title="Movie Database API", version="1.0.0")
+app.middleware("http")(log_requests)
 storage = MovieStorage()
-
 cache = MovieCache()
 
-app = FastAPI(title="Movie Database API", version="1.0.0")
+
 @app.get("/health", response_model=HealthResponse)
 def health_check():
     """Return the application status and version."""
@@ -56,32 +56,6 @@ def invalidate(self):
     """Remove all cached movie retrievals."""
     self.client.flushdb()
     logger.debug("Invalidated movie cache")
-
-@app.get("/movies", response_model=MovieDataResponse)
-def get_movies(limit: int = Query(default=100, ge=1)):
-    """Return up to limit stored movies and the total count."""
-    cached = cache.get(limit)
-    if cached is not None:
-        logger.info(f"Cache hit: limit={limit}")
-        return cached
-
-    records = storage.select_columns(MOVIE_COLUMNS, limit=limit)
-    total_rows = storage.count_movies()
-    response = {"data": records, "total_rows": total_rows}
-
-    cache.set(limit, response)
-    logger.info(f"Returned {len(records)} of {total_rows} movie(s)")
-    return response
-
-    # Part 1: read from the database
-    records = storage.select_columns(MOVIE_COLUMNS, limit=limit)
-    total_rows = storage.count_movies()
-    response = {"data": records, "total_rows": total_rows}
-
-    # TODO 2: cache the response, then log and return it
-    cache.set(limit, response)
-    logger.info(f"Returned {len(records)} of {total_rows} movie(s)")
-    return response
 
 @app.post("/upload", response_model=MovieUploadInfo)
 async def upload_movies(file: UploadFile = File(...)):
@@ -161,6 +135,24 @@ def process_movies(config: ProcessConfig):
         "validation_rows_removed": validation_rows_removed,
         "cleaning_report": cleaning_report,
     }
+    
+@app.get("/movies", response_model=MovieDataResponse)
+def get_movies(limit: int = Query(default=100, ge=1)):
+    """Return up to limit stored movies and the total count."""
+    cached = cache.get(limit)
+    if cached is not None:
+        logger.info(f"Cache hit: limit={limit}")
+        return cached
+
+    records = storage.select_columns(MOVIE_COLUMNS, limit=limit)
+    total_rows = storage.count_movies()
+    response = {"data": records, "total_rows": total_rows}
+
+    cache.set(limit, response)
+    logger.info(f"Returned {len(records)} of {total_rows} movie(s)")
+    return response
+
+
 
 @app.get("/movies/search", response_model=list[dict])
 def query_movies(
