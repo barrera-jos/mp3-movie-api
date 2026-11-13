@@ -14,6 +14,7 @@ from src import (
     MovieStorage,
     MovieUploadInfo,
     ProcessConfig,
+    MovieCache
 )
 
 logging.basicConfig(
@@ -26,14 +27,34 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Movie Database API")
 storage = MovieStorage()
 
+cache = MovieCache()
+
 
 @app.get("/movies", response_model=MovieDataResponse)
 def get_movies(limit: int = Query(default=100, ge=1)):
     """Return up to limit stored movies and the total count."""
+    cached = cache.get(limit)
+    if cached is not None:
+        logger.info(f"Cache hit: limit={limit}")
+        return cached
+
     records = storage.select_columns(MOVIE_COLUMNS, limit=limit)
     total_rows = storage.count_movies()
+    response = {"data": records, "total_rows": total_rows}
+
+    cache.set(limit, response)
     logger.info(f"Returned {len(records)} of {total_rows} movie(s)")
-    return {"data": records, "total_rows": total_rows}
+    return response
+
+    # Part 1: read from the database
+    records = storage.select_columns(MOVIE_COLUMNS, limit=limit)
+    total_rows = storage.count_movies()
+    response = {"data": records, "total_rows": total_rows}
+
+    # TODO 2: cache the response, then log and return it
+    cache.set(limit, response)
+    logger.info(f"Returned {len(records)} of {total_rows} movie(s)")
+    return response
 
 @app.post("/upload", response_model=MovieUploadInfo)
 async def upload_movies(file: UploadFile = File(...)):
@@ -67,6 +88,7 @@ async def upload_movies(file: UploadFile = File(...)):
 
     # TODO 3: save and report
     storage.save(df)
+    cache.invalidate()  # Add this line.
     logger.info(f"Saved {len(df)} movie(s) from '{file.filename}'")
     return {
         "filename": file.filename,
@@ -107,6 +129,7 @@ def process_movies(config: ProcessConfig):
 
     # TODO 3: replace the stored movies with the result
     storage.save(processed)
+    cache.invalidate()  # Add this line.
     return {
         "validation_rows_removed": validation_rows_removed,
         "cleaning_report": cleaning_report,
@@ -126,3 +149,4 @@ def query_movies(
 
     logger.info(f"Searched movies: columns={columns}, rows={len(records)}")
     return records
+

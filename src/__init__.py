@@ -4,3 +4,4 @@ from .middleware import log_requests
 from .models import MovieDataResponse, MovieProcessingReport, MovieUploadInfo, ProcessConfig
 from .storage import MOVIE_COLUMNS, MovieStorage
 from .models import MovieDataResponse, MovieProcessingReport, MovieUploadInfo, ProcessConfig
+from .cache import MovieCache

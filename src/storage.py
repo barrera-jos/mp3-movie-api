@@ -6,8 +6,7 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-# Match this to the MOVIE_COLUMNS already defined in your file
-MOVIE_COLUMNS = ["title", "genre", "year", "rating"]
+MOVIE_COLUMNS = ["title", "release_year", "rating", "genre"]
 
 
 def get_connection(db_path):
@@ -28,9 +27,9 @@ def initialize_database(db_path):
             CREATE TABLE IF NOT EXISTS movies (
                 id INTEGER PRIMARY KEY,
                 title TEXT NOT NULL,
-                genre TEXT,
-                year INTEGER,
-                rating REAL
+                release_year INTEGER,
+                rating REAL,
+                genre TEXT
             )
             """
         )
