@@ -1,6 +1,8 @@
 import io
 import logging
 from pathlib import Path
+import json
+
 
 import pandas as pd
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
@@ -8,13 +10,14 @@ from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from src import MOVIE_COLUMNS, MovieStorage
 from data_pipeline import create_cleaning_report, process_data, validate_dataframe
 from src import (
+    HealthResponse,
     MOVIE_COLUMNS,
+    MovieCache,
     MovieDataResponse,
     MovieProcessingReport,
     MovieStorage,
     MovieUploadInfo,
     ProcessConfig,
-    MovieCache
 )
 
 logging.basicConfig(
@@ -29,6 +32,30 @@ storage = MovieStorage()
 
 cache = MovieCache()
 
+app = FastAPI(title="Movie Database API", version="1.0.0")
+@app.get("/health", response_model=HealthResponse)
+def health_check():
+    """Return the application status and version."""
+    return {"status": "ok", "version": app.version}
+
+def get(self, limit):
+    """Return the cached response dictionary, or None."""
+    key = self.make_key(limit)
+    cached = self.client.get(key)
+    if cached is None:
+        logger.debug(f"Cache MISS: {key}")
+        return None
+    logger.debug(f"Cache HIT: {key}")
+    return json.loads(cached)
+
+def set(self, limit, response):
+    """Cache the response dictionary for 90 seconds."""
+    self.client.set(self.make_key(limit), json.dumps(response), ex=90)
+
+def invalidate(self):
+    """Remove all cached movie retrievals."""
+    self.client.flushdb()
+    logger.debug("Invalidated movie cache")
 
 @app.get("/movies", response_model=MovieDataResponse)
 def get_movies(limit: int = Query(default=100, ge=1)):
